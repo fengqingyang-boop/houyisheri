@@ -306,7 +306,7 @@
                 this.pulsePhase += 0.05;
                 this.rayAngle += 0.02;
 
-                if (this.falling) {
+                if (this.falling && !this.collected) {
                     this.vy += GRAVITY * 0.15;
                     this.y += this.vy;
                     this.x += Math.sin(this.y * 0.01) * 0.5;
@@ -321,6 +321,7 @@
 
                     if (distance < this.radius + 50) {
                         this.collected = true;
+                        this.falling = false;
                         this.active = false;
                         collectedSuns++;
                         score += 100;
