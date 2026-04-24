@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>后裔射日</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: linear-gradient(to bottom, #1a1a2e, #16213e);
+            font-family: 'Microsoft YaHei', sans-serif;
+        }
+
+        #gameCanvas {
+            display: block;
+            background: linear-gradient(to bottom, #87CEEB 0%, #FFA500 60%, #8B4513 60%);
+        }
+
+        #gameUI {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 18px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+            z-index: 10;
+        }
+
+        #powerBar {
+            position: absolute;
+            bottom: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 300px;
+            height: 20px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 10px;
+            overflow: hidden;
+            z-index: 10;
+        }
+
+        #powerFill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #4CAF50, #FFC107, #FF5722);
+            transition: width 0.05s linear;
+        }
+
+        #startScreen, #gameOverScreen, #victoryScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 100;
+        }
+
+        #startScreen h1, #gameOverScreen h1, #victoryScreen h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            color: #FFD700;
+            text-shadow: 0 0 20px #FFD700;
+        }
+
+        #startScreen p, #gameOverScreen p, #victoryScreen p {
+            font-size: 18px;
+            margin-bottom: 10px;
+            text-align: center;
+            max-width: 600px;
+        }
+
+        button {
+            padding: 15px 40px;
+            font-size: 20px;
+            background: linear-gradient(45deg, #FF4500, #FF6347);
+            color: white;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            margin-top: 20px;
+            box-shadow: 0 4px 15px rgba(255, 69, 0, 0.4);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(255, 69, 0, 0.6);
+        }
+
+        #instructions {
+            margin-top: 30px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+
+        #instructions h3 {
+            color: #FFD700;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="gameUI">
+        <div id="score">得分: 0</div>
+        <div id="sunsLeft">剩余太阳: 10</div>
+        <div id="collectedSuns">已收集: 0</div>
+    </div>
+
+    <div id="powerBar">
+        <div id="powerFill"></div>
+    </div>
+
+    <div id="startScreen">
+        <h1>🏹 后裔射日 🌞</h1>
+        <p>传说中天上有十个太阳，烤得大地寸草不生。后裔决定射下多余的太阳，拯救苍生！</p>
+        <div id="instructions">
+            <h3>操作说明</h3>
+            <p>🎮 A/D 键：左右移动</p>
+            <p>🖱️ 鼠标移动：瞄准方向</p>
+            <p>⌨️ 空格键：蓄力（按住蓄力，松开射击）</p>
+            <p>⚠️ 射到太阳后，太阳会下落，你需要跑到太阳下方接住它！</p>
+            <p>💀 如果太阳直接落地，大地将被摧毁，游戏结束！</p>
+        </div>
+        <button id="startBtn">开始游戏</button>
+    </div>
+
+    <div id="gameOverScreen" style="display: none;">
+        <h1>💀 游戏结束</h1>
+        <p>太阳摧毁了大地...</p>
+        <p id="finalScore">最终得分: 0</p>
+        <button id="restartBtn">重新开始</button>
+    </div>
+
+    <div id="victoryScreen" style="display: none;">
+        <h1>🎉 胜利！</h1>
+        <p>你成功射下了所有太阳，拯救了苍生！</p>
+        <p id="victoryScore">最终得分: 0</p>
+        <button id="playAgainBtn">再玩一次</button>
+    </div>
+
+    <script>
+        // 获取画布和上下文
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // 设置画布大小
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // 游戏状态
+        const GameState = {
+            MENU: 'menu',
+            PLAYING: 'playing',
+            GAME_OVER: 'gameOver',
+            VICTORY: 'victory'
+        };
+
+        let gameState = GameState.MENU;
+        let score = 0;
+        let collectedSuns = 0;
+        let totalSuns = 10;
+
+        // 物理常量
+        const GRAVITY = 0.5;
+        const MAX_POWER = 20;
+        const POWER_RATE = 0.3;
+
+        // 输入状态
+        const keys = {};
+        let mouseX = 0;
+        let mouseY = 0;
+        let isCharging = false;
+        let power = 0;
+
+        // 玩家对象
+        const player = {
+            x: 0,
+            y: 0,
+            width: 50,
+            height: 80,
+            speed: 5,
+            direction: 1, // 1 向右, -1 向左
+            color: '#8B4513',
+            angle: 0, // 瞄准角度
+            arrows: []
+        };
+
+        // 箭头对象
+        class Arrow {
+            constructor(x, y, angle, power) {
+                this.x = x;
+                this.y = y;
+                this.angle = angle;
+                this.speed = power;
+                this.vx = Math.cos(angle) * this.speed;
+                this.vy = Math.sin(angle) * this.speed;
+                this.active = true;
+                this.trail = [];
+            }
+
+            update() {
+                this.vy += GRAVITY * 0.3;
+                this.x += this.vx;
+                this.y += this.vy;
+                this.angle = Math.atan2(this.vy, this.vx);
+
+                // 保存轨迹
+                this.trail.push({ x: this.x, y: this.y });
+                if (this.trail.length > 20) {
+                    this.trail.shift();
+                }
+
+                // 检查是否超出画布
+                if (this.x < -50 || this.x > canvas.width + 50 || this.y > canvas.height + 50) {
+                    this.active = false;
+                }
+            }
+
+            draw() {
+                // 绘制轨迹
+                ctx.strokeStyle = 'rgba(255, 100, 0, 0.5)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                for (let i = 0; i < this.trail.length; i++) {
+                    if (i === 0) {
+                        ctx.moveTo(this.trail[i].x, this.trail[i].y);
+                    } else {
+                        ctx.lineTo(this.trail[i].x, this.trail[i].y);
+                    }
+                }
+                ctx.stroke();
+
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+
+                // 箭杆
+                ctx.fillStyle = '#8B4513';
+                ctx.fillRect(-30, -2, 60, 4);
+
+                // 箭头
+                ctx.fillStyle = '#C0C0C0';
+                ctx.beginPath();
+                ctx.moveTo(30, 0);
+                ctx.lineTo(20, -6);
+                ctx.lineTo(20, 6);
+                ctx.closePath();
+                ctx.fill();
+
+                // 箭羽
+                ctx.fillStyle = '#FF6347';
+                ctx.beginPath();
+                ctx.moveTo(-30, 0);
+                ctx.lineTo(-20, -5);
+                ctx.lineTo(-15, 0);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.moveTo(-30, 0);
+                ctx.lineTo(-20, 5);
+                ctx.lineTo(-15, 0);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        // 太阳对象
+        class Sun {
+            constructor(index) {
+                this.radius = 40;
+                this.x = 100 + index * (canvas.width - 200) / 9;
+                this.y = 100 + Math.random() * 100;
+                this.originalY = this.y;
+                this.color = '#FFD700';
+                this.active = true;
+                this.falling = false;
+                this.collected = false;
+                this.vy = 0;
+                this.pulsePhase = Math.random() * Math.PI * 2;
+                this.rayAngle = 0;
+            }
+
+            update() {
+                this.pulsePhase += 0.05;
+                this.rayAngle += 0.02;
+
+                if (this.falling) {
+                    this.vy += GRAVITY;
+                    this.y += this.vy;
+                    this.x += Math.sin(this.y * 0.01) * 0.5;
+
+                    // 检查是否落地
+                    if (this.y + this.radius >= canvas.height * 0.6) {
+                        this.active = false;
+                        gameState = GameState.GAME_OVER;
+                        showGameOver();
+                    }
+
+                    // 检查是否被玩家收集
+                    const playerCenterX = player.x + player.width / 2;
+                    const playerCenterY = player.y + player.height / 2;
+                    const distance = Math.sqrt(
+                        Math.pow(this.x - playerCenterX, 2) + 
+                        Math.pow(this.y - playerCenterY, 2)
+                    );
+
+                    if (distance < this.radius + 30) {
+                        this.collected = true;
+                        this.active = false;
+                        collectedSuns++;
+                        score += 100;
+                        updateUI();
+
+                        if (collectedSuns >= totalSuns) {
+                            gameState = GameState.VICTORY;
+                            showVictory();
+                        }
+                    }
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+
+                // 绘制光芒
+                const pulseSize = 1 + Math.sin(this.pulsePhase) * 0.1;
+                ctx.save();
+                ctx.rotate(this.rayAngle);
+                
+                for (let i = 0; i < 12; i++) {
+                    ctx.save();
+                    ctx.rotate(i * Math.PI / 6);
+                    
+                    const gradient = ctx.createLinearGradient(0, 0, 0, -80 * pulseSize);
+                    gradient.addColorStop(0, 'rgba(255, 215, 0, 0.8)');
+                    gradient.addColorStop(1, 'rgba(255, 215, 0, 0)');
+                    
+                    ctx.fillStyle = gradient;
+                    ctx.beginPath();
+                    ctx.moveTo(-10, -this.radius * pulseSize);
+                    ctx.lineTo(0, -80 * pulseSize);
+                    ctx.lineTo(10, -this.radius * pulseSize);
+                    ctx.closePath();
+                    ctx.fill();
+                    
+                    ctx.restore();
+                }
+                ctx.restore();
+
+                // 绘制太阳主体
+                const sunGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius * pulseSize);
+                sunGradient.addColorStop(0, '#FFFFFF');
+                sunGradient.addColorStop(0.3, '#FFD700');
+                sunGradient.addColorStop(0.7, '#FFA500');
+                sunGradient.addColorStop(1, '#FF4500');
+
+                ctx.fillStyle = sunGradient;
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius * pulseSize, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 发光效果
+                ctx.shadowColor = '#FFD700';
+                ctx.shadowBlur = 30;
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius * pulseSize * 0.8, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+
+                ctx.restore();
+            }
+
+            startFalling() {
+                this.falling = true;
+                this.vy = 0;
+            }
+        }
+
+        // 游戏对象
+        let suns = [];
+
+        // 初始化游戏
+        function initGame() {
+            player.x = canvas.width / 2 - player.width / 2;
+            player.y = canvas.height * 0.6 - player.height;
+            player.arrows = [];
+            
+            suns = [];
+            for (let i = 0; i < 10; i++) {
+                suns.push(new Sun(i));
+            }
+
+            score = 0;
+            collectedSuns = 0;
+            power = 0;
+            isCharging = false;
+            updateUI();
+        }
+
+        // 更新UI
+        function updateUI() {
+            document.getElementById('score').textContent = `得分: ${score}`;
+            document.getElementById('sunsLeft').textContent = `剩余太阳: ${totalSuns - collectedSuns}`;
+            document.getElementById('collectedSuns').textContent = `已收集: ${collectedSuns}`;
+            document.getElementById('powerFill').style.width = `${(power / MAX_POWER) * 100}%`;
+        }
+
+        // 显示游戏结束
+        function showGameOver() {
+            document.getElementById('gameOverScreen').style.display = 'flex';
+            document.getElementById('finalScore').textContent = `最终得分: ${score}`;
+        }
+
+        // 显示胜利
+        function showVictory() {
+            document.getElementById('victoryScreen').style.display = 'flex';
+            document.getElementById('victoryScore').textContent = `最终得分: ${score}`;
+        }
+
+        // 绘制背景
+        function drawBackground() {
+            // 天空
+            const skyGradient = ctx.createLinearGradient(0, 0, 0, canvas.height * 0.6);
+            skyGradient.addColorStop(0, '#1a1a2e');
+            skyGradient.addColorStop(0.5, '#4a4e69');
+            skyGradient.addColorStop(1, '#9a8c98');
+            ctx.fillStyle = skyGradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height * 0.6);
+
+            // 云朵
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+            for (let i = 0; i < 5; i++) {
+                const x = (Date.now() * 0.01 + i * 300) % (canvas.width + 200) - 100;
+                const y = 80 + i * 40;
+                drawCloud(x, y, 60 + i * 10);
+            }
+
+            // 地面
+            const groundGradient = ctx.createLinearGradient(0, canvas.height * 0.6, 0, canvas.height);
+            groundGradient.addColorStop(0, '#8B4513');
+            groundGradient.addColorStop(0.3, '#654321');
+            groundGradient.addColorStop(1, '#3d2914');
+            ctx.fillStyle = groundGradient;
+            ctx.fillRect(0, canvas.height * 0.6, canvas.width, canvas.height * 0.4);
+
+            // 草地
+            ctx.fillStyle = '#228B22';
+            ctx.fillRect(0, canvas.height * 0.6 - 5, canvas.width, 10);
+
+            // 草丛装饰
+            ctx.fillStyle = '#2E8B57';
+            for (let i = 0; i < canvas.width; i += 15) {
+                const height = 10 + Math.sin(i * 0.1 + Date.now() * 0.001) * 5;
+                ctx.beginPath();
+                ctx.moveTo(i, canvas.height * 0.6);
+                ctx.lineTo(i + 7, canvas.height * 0.6 - height);
+                ctx.lineTo(i + 14, canvas.height * 0.6);
+                ctx.closePath();
+                ctx.fill();
+            }
+        }
+
+        function drawCloud(x, y, size) {
+            ctx.beginPath();
+            ctx.arc(x, y, size * 0.5, 0, Math.PI * 2);
+            ctx.arc(x + size * 0.4, y - size * 0.1, size * 0.4, 0, Math.PI * 2);
+            ctx.arc(x + size * 0.8, y, size * 0.35, 0, Math.PI * 2);
+            ctx.arc(x + size * 0.4, y + size * 0.2, size * 0.3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // 绘制玩家
+        function drawPlayer() {
+            ctx.save();
+            ctx.translate(player.x + player.width / 2, player.y + player.height / 2);
+            ctx.scale(player.direction, 1);
+
+            // 身体
+            ctx.fillStyle = '#8B4513';
+            ctx.fillRect(-15, -20, 30, 50);
+
+            // 头
+            ctx.fillStyle = '#DEB887';
+            ctx.beginPath();
+            ctx.arc(0, -30, 15, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 头发
+            ctx.fillStyle = '#000';
+            ctx.beginPath();
+            ctx.arc(0, -35, 12, Math.PI, 0);
+            ctx.fill();
+
+            // 眼睛
+            ctx.fillStyle = '#000';
+            ctx.beginPath();
+            ctx.arc(5, -32, 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 弓
+            ctx.strokeStyle = '#8B4513';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(20, 0, 25, -Math.PI * 0.6, Math.PI * 0.6);
+            ctx.stroke();
+
+            // 弓弦
+            ctx.strokeStyle = '#D2B48C';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            const bowEndX = 20 + Math.cos(-Math.PI * 0.6) * 25;
+            const bowEndY = Math.sin(-Math.PI * 0.6) * 25;
+            const bowEndX2 = 20 + Math.cos(Math.PI * 0.6) * 25;
+            const bowEndY2 = Math.sin(Math.PI * 0.6) * 25;
+            
+            // 根据蓄力调整弓弦位置
+            let stringX = 20;
+            if (isCharging) {
+                stringX = 20 - power * 2;
+            }
+            
+            ctx.moveTo(bowEndX, bowEndY);
+            ctx.lineTo(stringX, 0);
+            ctx.lineTo(bowEndX2, bowEndY2);
+            ctx.stroke();
+
+            // 瞄准线
+            if (gameState === GameState.PLAYING) {
+                ctx.restore();
+                ctx.save();
+                
+                // 计算瞄准角度
+                const playerCenterX = player.x + player.width / 2;
+                const playerCenterY = player.y + player.height / 2 - 10;
+                const dx = mouseX - playerCenterX;
+                const dy = mouseY - playerCenterY;
+                player.angle = Math.atan2(dy, dx);
+
+                // 确保角度不会太低（至少有一点向上的角度）
+                if (player.angle > Math.PI * 0.3) {
+                    player.angle = Math.PI * 0.3;
+                }
+                if (player.angle < -Math.PI * 0.8) {
+                    player.angle = -Math.PI * 0.8;
+                }
+
+                // 更新玩家方向
+                if (player.angle > Math.PI / 2 || player.angle < -Math.PI / 2) {
+                    player.direction = -1;
+                } else {
+                    player.direction = 1;
+                }
+
+                // 绘制瞄准轨迹预测
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                ctx.moveTo(playerCenterX, playerCenterY);
+
+                let previewX = playerCenterX;
+                let previewY = playerCenterY;
+                let previewVx = Math.cos(player.angle) * (isCharging ? power : MAX_POWER * 0.5);
+                let previewVy = Math.sin(player.angle) * (isCharging ? power : MAX_POWER * 0.5);
+
+                for (let i = 0; i < 50; i++) {
+                    previewVy += GRAVITY * 0.3;
+                    previewX += previewVx;
+                    previewY += previewVy;
+                    ctx.lineTo(previewX, previewY);
+
+                    if (previewY > canvas.height) break;
+                }
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            ctx.restore();
+        }
+
+        // 碰撞检测
+        function checkCollisions() {
+            for (let arrow of player.arrows) {
+                if (!arrow.active) continue;
+
+                for (let sun of suns) {
+                    if (!sun.active || sun.falling || sun.collected) continue;
+
+                    const distance = Math.sqrt(
+                        Math.pow(arrow.x - sun.x, 2) + 
+                        Math.pow(arrow.y - sun.y, 2)
+                    );
+
+                    if (distance < sun.radius + 10) {
+                        sun.startFalling();
+                        arrow.active = false;
+                        score += 50;
+                        updateUI();
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 游戏更新
+        function update() {
+            if (gameState !== GameState.PLAYING) return;
+
+            // 玩家移动
+            if (keys['a'] || keys['A'] || keys['ArrowLeft']) {
+                player.x -= player.speed;
+                player.direction = -1;
+            }
+            if (keys['d'] || keys['D'] || keys['ArrowRight']) {
+                player.x += player.speed;
+                player.direction = 1;
+            }
+
+            // 边界限制
+            player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
+
+            // 蓄力
+            if (isCharging) {
+                power = Math.min(power + POWER_RATE, MAX_POWER);
+                updateUI();
+            }
+
+            // 更新箭头
+            for (let i = player.arrows.length - 1; i >= 0; i--) {
+                player.arrows[i].update();
+                if (!player.arrows[i].active) {
+                    player.arrows.splice(i, 1);
+                }
+            }
+
+            // 更新太阳
+            for (let sun of suns) {
+                sun.update();
+            }
+
+            // 碰撞检测
+            checkCollisions();
+        }
+
+        // 渲染
+        function render() {
+            // 清空画布
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 绘制背景
+            drawBackground();
+
+            // 绘制太阳
+            for (let sun of suns) {
+                if (sun.active) {
+                    sun.draw();
+                }
+            }
+
+            // 绘制玩家
+            drawPlayer();
+
+            // 绘制箭头
+            for (let arrow of player.arrows) {
+                arrow.draw();
+            }
+        }
+
+        // 游戏主循环
+        function gameLoop() {
+            update();
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // 事件监听
+        document.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+
+            if (e.key === ' ' && gameState === GameState.PLAYING && !isCharging) {
+                e.preventDefault();
+                isCharging = true;
+                power = 0;
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+
+            if (e.key === ' ' && gameState === GameState.PLAYING && isCharging) {
+                e.preventDefault();
+                isCharging = false;
+
+                // 发射箭头
+                const playerCenterX = player.x + player.width / 2;
+                const playerCenterY = player.y + player.height / 2 - 10;
+                player.arrows.push(new Arrow(playerCenterX, playerCenterY, player.angle, power));
+                
+                power = 0;
+                updateUI();
+            }
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        // 按钮事件
+        document.getElementById('startBtn').addEventListener('click', () => {
+            document.getElementById('startScreen').style.display = 'none';
+            gameState = GameState.PLAYING;
+            initGame();
+        });
+
+        document.getElementById('restartBtn').addEventListener('click', () => {
+            document.getElementById('gameOverScreen').style.display = 'none';
+            gameState = GameState.PLAYING;
+            initGame();
+        });
+
+        document.getElementById('playAgainBtn').addEventListener('click', () => {
+            document.getElementById('victoryScreen').style.display = 'none';
+            gameState = GameState.PLAYING;
+            initGame();
+        });
+
+        // 启动游戏循环
+        gameLoop();
+    </script>
+</body>
+</html>
