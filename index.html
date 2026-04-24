@@ -307,18 +307,11 @@
                 this.rayAngle += 0.02;
 
                 if (this.falling) {
-                    this.vy += GRAVITY;
+                    this.vy += GRAVITY * 0.15;
                     this.y += this.vy;
                     this.x += Math.sin(this.y * 0.01) * 0.5;
 
-                    // 检查是否落地
-                    if (this.y + this.radius >= canvas.height * 0.6) {
-                        this.active = false;
-                        gameState = GameState.GAME_OVER;
-                        showGameOver();
-                    }
-
-                    // 检查是否被玩家收集
+                    // 先检查是否被玩家收集
                     const playerCenterX = player.x + player.width / 2;
                     const playerCenterY = player.y + player.height / 2;
                     const distance = Math.sqrt(
@@ -326,7 +319,7 @@
                         Math.pow(this.y - playerCenterY, 2)
                     );
 
-                    if (distance < this.radius + 30) {
+                    if (distance < this.radius + 50) {
                         this.collected = true;
                         this.active = false;
                         collectedSuns++;
@@ -336,6 +329,13 @@
                         if (collectedSuns >= totalSuns) {
                             gameState = GameState.VICTORY;
                             showVictory();
+                        }
+                    } else {
+                        // 只有在没有被收集的情况下才检查是否落地
+                        if (this.y + this.radius >= canvas.height * 0.6) {
+                            this.active = false;
+                            gameState = GameState.GAME_OVER;
+                            showGameOver();
                         }
                     }
                 }
